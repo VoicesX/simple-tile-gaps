@@ -1,6 +1,6 @@
 /*
-KWin Script Window Gaps
-(C) 2021-2022 Natalie Clarius <natalie_clarius@yahoo.de>
+KWin Script Simple Window Gaps
+(C) 2023 Felix Jara <felix@clabs.tech>
 GNU General Public License v3.0
 */
 
@@ -40,7 +40,7 @@ const config = {
 // initialization
 ///////////////////////
 
-const debugMode = readConfig("debugMode", true);
+const debugMode = readConfig("debugMode", false);
 const fullDebugMode = readConfig("fullDebugMode", false);
 
 function debug(...args) {
@@ -68,7 +68,9 @@ debug("");
 ///////////////////////
 
 // block reapplying until current iteration is finished
-var block = false;
+let block = false;
+let move = false;
+
 
 // trigger debug output when client is activated
 workspace.clientActivated.connect(client => {
@@ -87,42 +89,62 @@ function onAdded(client) {
     onRegeometrized(client);
 }
 
+function setMove (value) {
+    debug("event set:", value)
+    move = value
+}
+
+function getMove () {
+    debug("event get", move)
+    return move
+}
+move = false
 // trigger applying tile gaps when client is moved or resized
 function onRegeometrized(client) {
+
     client.moveResizedChanged.connect((client) => {
-        debug("move resized changed", caption(client));
+        debug("event: move resized changed", caption(client));
         applyGaps(client);
     });
     client.frameGeometryChanged.connect((client) => {
-        debug("frame geometry changed", caption(client));
-        applyGaps(client)
+        debug("event: frame geometry changed", caption(client));
+        debug("event: move", caption(client), getMove())
+        if (caption(client) === getMove() || !getMove()) {
+            applyGaps(client)
+        }
+    });
+    client.clientStartUserMovedResized.connect((client) => {
+        debug("event: start user moved resized", caption(client));
+        setMove(caption(client))
+        applyGaps(client);
     });
     client.clientFinishUserMovedResized.connect((client) => {
-        debug("finish user moved resized", caption(client));
+        debug("event: finish user moved resized", caption(client));
+        setMove(false)
         applyGaps(client);
     });
     client.fullScreenChanged.connect((client) => {
-        debug("fullscreen changed", caption(client));
+        debug("event: fullscreen changed", caption(client));
         applyGaps(client);
     });
     client.clientMaximizedStateChanged.connect((client) => {
-        debug("maximized changed", caption(client));
+        debug("event: maximized changed", caption(client));
         applyGaps(client);
     });
     client.clientUnminimized.connect((client) => {
-        debug("unminimized", caption(client));
+        debug("event: unminimized", caption(client));
         applyGaps(client);
     });
     client.screenChanged.connect((client) => {
-        debug("screen changed", caption(client));
+        debug("event: screen changed", caption(client));
         applyGaps(client);
     });
     client.desktopChanged.connect((client) => {
-        debug("desktop changed", caption(client));
+        debug("event: desktop changed", caption(client));
         applyGaps(client);
     });
     client.activitiesChanged.connect((client) => {
-        debug("activities changed", caption(client));
+        debug("event: activities changed", caption(client));
         applyGaps(client);
     });
 }
@@ -198,13 +220,17 @@ function applyGaps(client) {
     // make gaps to area grid
     applyGapsArea(client);
     // make gaps to other windows
-    applyGapsWindows(client);
+    if (!getMove()) {
+        applyGapsWindows(client);
+    }
     block = false;
 
     debug("");
 }
 
 function applyGapsArea(client) {
+    debug("inicial size", geometry(client.frameGeometry))
+
     let area = getArea(client);
     debug("area", geometry(area));
     let grid = getGrid(client);
@@ -230,6 +256,8 @@ function applyGapsArea(client) {
                 debug("gap to edge", edge, pos, coords.gapped);
                 anchored[edge] = true;
                 let diff = coords.gapped - coords.win;
+                debug("diff coords.gapped", coords.gapped)
+                debug("diff coords.win", coords.win)
                 switch (edge) {
 
                     case "left":
@@ -276,10 +304,14 @@ function applyGapsArea(client) {
     if (Object.keys(grid).every((edge) => anchored[edge]) && client.frameGeometry != gridded) {
         debug("set grid geometry", geometry(gridded));
         client.frameGeometry = gridded;
+        debug("gridded final size", geometry(client.frameGeometry), geometry(client.geometry))
     } else if (client.frameGeometry != edged) {
         debug("set edge geometry", geometry(edged));
         client.frameGeometry = edged;
+        debug("edge final size", geometry(client.frameGeometry), geometry(client.geometry))
     }
+
+    debug("final size", geometry(client.frameGeometry), geometry(client.geometry))
 }
 
 function applyGapsWindows(client1) {
@@ -376,7 +408,7 @@ function applyGapsWindows(client1) {
 
     if (client1.frameGeometry != win1) {
         debug("set neighbored geometry", geometry(win1));
-        client1.frameGeometry = win1;
+        // client1.frameGeometry = win1;
     }
 }
 
@@ -476,6 +508,9 @@ function getGrid(client) {
 
 // a client is maximized iff its geometry is equal to the maximize area
 function maximized(client) {
+    if (!client) {
+        return false;
+    }
     return client.geometry == workspace.clientArea(KWin.MaximizeArea, client);
 }
 
